@@ -1,0 +1,20 @@
+{
+  "name": "مولّد أيقونات التطبيقات",
+  "short_name": "مولّد الأيقونات",
+  "description": "أداة لتوليد جميع مقاسات أيقونات التطبيقات لأندرويد و iOS والويب من صورة واحدة — تعمل دون اتصال بالإنترنت",
+  "id": "./",
+  "lang": "ar",
+  "dir": "rtl",
+  "start_url": "./index.html",
+  "scope": "./",
+  "orientation": "portrait",
+  "orientation": "any",
+  "background_color": "#0f1220",
+  "theme_color": "#6c5ce7",
+  "categories": ["developer", "productivity", "utilities"],
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

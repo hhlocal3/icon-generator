@@ -1,0 +1,797 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>مولّد أيقونات التطبيقات</title>
+<!-- ===== PWA: التثبيت والعمل دون اتصال ===== -->
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#6c5ce7">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="مولّد الأيقونات">
+
+<!-- خط Tajawal -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700;800&display=swap" rel="stylesheet">
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<style>
+  :root {
+    --bg: #0f1220;
+    --card: #1a1f35;
+    --card2: #222848;
+    --accent: #6c5ce7;
+    --accent2: #00cec9;
+    --text: #eef0ff;
+    --muted: #9aa0c3;
+    --radius: 16px;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body, button, input, select, textarea { font-family: "Tajawal", sans-serif; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    padding: 16px;
+    overflow-x: hidden;
+  }
+
+  /* خلفية متحركة خفيفة */
+  .blob { position: fixed; border-radius: 50%; filter: blur(90px); opacity: .22; z-index: -1; pointer-events: none; }
+  .blob.b1 { width: 420px; height: 420px; background: var(--accent); top: -120px; left: -100px; animation: float1 14s ease-in-out infinite alternate; }
+  .blob.b2 { width: 360px; height: 360px; background: var(--accent2); bottom: -100px; right: -80px; animation: float2 18s ease-in-out infinite alternate; }
+  @keyframes float1 { to { transform: translate(60px, 80px) scale(1.15); } }
+  @keyframes float2 { to { transform: translate(-70px, -60px) scale(1.1); } }
+  @media (prefers-reduced-motion: reduce) { .blob { animation: none; } }
+
+  .container { max-width: 1200px; margin: 0 auto; }
+
+  header { text-align: center; padding: 24px 0 8px; }
+  header h1 {
+    font-size: clamp(1.5rem, 4vw, 2.4rem);
+    font-weight: 800;
+    background: linear-gradient(90deg, var(--accent), var(--accent2), var(--accent));
+    background-size: 200% auto;
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    animation: shine 6s linear infinite;
+  }
+  @keyframes shine { to { background-position: 200% center; } }
+  header p { color: var(--muted); margin-top: 8px; font-size: clamp(.85rem, 2.5vw, 1rem); }
+
+  .drop-zone {
+    border: 2px dashed #3a4170;
+    border-radius: var(--radius);
+    background: var(--card);
+    padding: 40px 20px;
+    text-align: center;
+    cursor: pointer;
+    transition: .25s;
+    margin-top: 24px;
+  }
+  .drop-zone:hover, .drop-zone.drag { border-color: var(--accent2); background: var(--card2); transform: scale(1.01); }
+  .drop-zone .icon { font-size: 3rem; }
+  .drop-zone h3 { margin: 12px 0 6px; }
+  .drop-zone span { color: var(--muted); font-size: .9rem; }
+  #fileInput { display: none; }
+
+  .panel {
+    background: var(--card);
+    border-radius: var(--radius);
+    padding: 20px;
+    margin-top: 20px;
+    display: none;
+  }
+  .panel.show { display: block; animation: fade .4s; }
+  @keyframes fade { from { opacity: 0; transform: translateY(10px);} to { opacity: 1; transform: none;} }
+  .panel h2 { font-size: 1.15rem; margin-bottom: 14px; color: var(--accent2); font-weight: 800; }
+  .hint { color: var(--muted); font-size: .8rem; margin-top: 8px; line-height: 1.7; }
+
+  /* ===== القص ===== */
+  .crop-wrap { display: flex; flex-wrap: wrap; gap: 20px; align-items: flex-start; }
+  #cropCanvas {
+    border-radius: 14px;
+    max-width: 100%;
+    height: auto;
+    touch-action: none;
+    cursor: grab;
+    box-shadow: 0 8px 30px #0006;
+  }
+  #cropCanvas:active { cursor: grabbing; }
+  .crop-controls { flex: 1; min-width: 240px; }
+
+  .grid { display: grid; grid-template-columns: 300px 1fr; gap: 24px; }
+  @media (max-width: 820px) { .grid { grid-template-columns: 1fr; } }
+
+  .preview-box { background: var(--card2); border-radius: var(--radius); padding: 16px; text-align: center; }
+  #previewCanvas {
+    max-width: 100%;
+    border-radius: 12px;
+    background: conic-gradient(#333a5c 0 25%, #2a3050 0 50%, #333a5c 0 75%, #2a3050 0) 0 0/24px 24px;
+  }
+
+  label { display: block; margin: 14px 0 6px; color: var(--muted); font-size: .9rem; }
+  .row { display: flex; gap: 16px; flex-wrap: wrap; align-items: flex-end; }
+  select, input[type=number], input[type=text], input[type=color] {
+    background: var(--card2); color: var(--text); border: 1px solid #3a4170;
+    border-radius: 10px; padding: 10px; font-size: .95rem; outline: none; width: 100%;
+  }
+  select:focus, input:focus { border-color: var(--accent); }
+  input[type=color] { padding: 4px; height: 44px; cursor: pointer; }
+  input[type=range] { width: 100%; accent-color: var(--accent); }
+  input[type=checkbox] { accent-color: var(--accent2); width: 18px; height: 18px; }
+
+  .btn {
+    border: none; border-radius: 12px; padding: 13px 22px; font-size: 1rem;
+    cursor: pointer; font-weight: 700; transition: .2s; color: #fff;
+  }
+  .btn-primary { background: linear-gradient(90deg, var(--accent), var(--accent2)); }
+  .btn-primary:hover { filter: brightness(1.15); transform: translateY(-2px); }
+  .btn-ghost { background: var(--card2); border: 1px solid #3a4170; }
+  .btn-ghost:hover { border-color: var(--accent2); }
+  .actions { margin-top: 22px; display: flex; gap: 12px; flex-wrap: wrap; }
+
+  .chips { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 8px; }
+  .chip {
+    padding: 8px 18px; border-radius: 999px; background: var(--card2);
+    border: 1px solid #3a4170; cursor: pointer; font-size: .9rem; transition: .2s;
+    user-select: none;
+  }
+  .chip.active { background: var(--accent); border-color: var(--accent); }
+  .chip:hover { transform: translateY(-2px); }
+
+  .subpanel {
+    background: var(--card2); border: 1px solid #3a4170; border-radius: 12px;
+    padding: 14px; margin-top: 14px;
+  }
+
+  /* ===== محرر manifest ===== */
+  .m-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 14px; }
+  #manifestPreview {
+    direction: ltr; text-align: left;
+    background: #10142a; border: 1px solid #3a4170; border-radius: 12px;
+    padding: 14px; margin-top: 16px; font-size: .8rem; color: #9fe8e5;
+    overflow-x: auto; max-height: 260px; font-family: Consolas, monospace;
+  }
+  .check-line { display: flex; align-items: center; gap: 10px; margin-top: 16px; cursor: pointer; }
+
+  /* ===== النتائج ===== */
+  .results { margin-top: 28px; display: none; }
+  .results.show { display: block; }
+  .results h2 { font-size: 1.2rem; margin-bottom: 14px; color: var(--accent2); font-weight: 800; }
+  .icons-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 14px; }
+  .icon-card {
+    background: var(--card); border: 1px solid #2a3050; border-radius: 14px;
+    padding: 14px 10px; text-align: center; transition: .2s;
+  }
+  .icon-card:hover { transform: translateY(-4px); border-color: var(--accent); }
+  .icon-card img { border-radius: 8px; display: block; margin: 0 auto 10px; background: #fff1; }
+  .icon-card .size { font-weight: 700; font-size: .85rem; }
+  .icon-card .usage { color: var(--muted); font-size: .72rem; margin: 3px 0 8px; min-height: 28px; }
+  .icon-card .dl {
+    background: var(--card2); border: 1px solid #3a4170; color: var(--text);
+    border-radius: 8px; padding: 5px 12px; font-size: .78rem; cursor: pointer;
+  }
+  .icon-card .dl:hover { border-color: var(--accent2); }
+
+  footer { text-align: center; color: var(--muted); font-size: .8rem; margin: 40px 0 10px; }
+  .toast {
+    position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%) translateY(80px);
+    background: var(--accent); padding: 12px 28px; border-radius: 999px;
+    font-weight: 700; transition: .35s; opacity: 0; z-index: 99;
+  }
+  .toast.show { transform: translateX(-50%) translateY(0); opacity: 1; }
+</style>
+</head>
+<body>
+<div class="blob b1"></div><div class="blob b2"></div>
+
+<div class="container">
+  <header>
+    <h1>🎨 مولّد أيقونات التطبيقات</h1>
+    <p>ارفع صورة واحدة واحصل على جميع مقاسات الأيقونات لأندرويد و iOS والويب — معالجة محلية بالكامل، صورتك لا تغادر جهازك.</p>
+    <button id="installBtn" class="btn btn-primary" hidden style="margin-top:18px;">
+  📲 تثبيت التطبيق على جهازك
+</button>
+  </header>
+
+  <!-- رفع الصورة -->
+  <div class="drop-zone" id="dropZone">
+    <div class="icon">📁</div>
+    <h3>اضغط لاختيار صورة أو اسحبها هنا</h3>
+    <span>PNG · JPG · WEBP · SVG — يُفضّل صورة مربعة بدقة عالية (1024×1024 فأعلى) — يمكنك أيضاً اللصق بـ Ctrl+V</span>
+    <input type="file" id="fileInput" accept="image/*">
+  </div>
+
+  <!-- ✂️ القص التفاعلي -->
+  <div class="panel" id="cropPanel">
+    <h2>✂️ قص الصورة وضبطها</h2>
+    <div class="crop-wrap">
+      <canvas id="cropCanvas"></canvas>
+      <div class="crop-controls">
+        <label>مستوى التكبير: <span id="zoomVal">100%</span></label>
+        <input type="range" id="zoomRange" min="100" max="400" value="100">
+        <p class="hint">اسحب الصورة بإصبعك أو بالفأرة لتحديد الجزء المطلوب، واستخدم التكبير بالإصبعين (قرصة) أو عجلة الفأرة. الدائرة تمثل شكل الأيقونة النهائي.</p>
+        <div class="actions" style="margin-top:14px;">
+          <button class="btn btn-primary" id="applyCropBtn">✂️ تطبيق القص</button>
+          <button class="btn btn-ghost" id="resetCropBtn">↩️ إعادة تعيين</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- لوحة التحكم -->
+  <div class="panel" id="panel">
+    <h2>⚙️ إعدادات التوليد</h2>
+    <div class="grid">
+      <div class="preview-box">
+        <canvas id="previewCanvas" width="280" height="280"></canvas>
+        <p style="color:var(--muted); font-size:.8rem; margin-top:10px;">معاينة مباشرة للأيقونة القياسية</p>
+      </div>
+
+      <div class="controls">
+        <label>المنصات المطلوبة:</label>
+        <div class="chips" id="chips">
+          <div class="chip active" data-p="android">🤖 Android</div>
+          <div class="chip active" data-p="adaptive" id="adaptiveChip">🧩 تكيفية (Adaptive)</div>
+          <div class="chip active" data-p="ios">🍎 iOS</div>
+          <div class="chip active" data-p="web">🌐 Web / Favicon</div>
+          <div class="chip active" data-p="pwa">📲 PWA</div>
+        </div>
+
+        <!-- خيارات الأيقونات التكيفية -->
+        <div class="subpanel" id="adaptiveOpts">
+          <div class="row">
+            <div style="flex:1; min-width:160px;">
+              <label>خلفية الأيقونة التكيفية:</label>
+              <select id="adaptiveBgType">
+                <option value="color" selected>لون واحد</option>
+                <option value="image">الصورة نفسها (ملء كامل)</option>
+              </select>
+            </div>
+            <div style="width:110px;">
+              <label>اللون:</label>
+              <input type="color" id="adaptiveBg" value="#6c5ce7">
+            </div>
+          </div>
+          <p class="hint">🛡️ يوضع المحتوى تلقائياً داخل «المنطقة الآمنة» (66dp من أصل 108dp) لضمان عدم قصّه بأي قناع (دائرة، مربع دائري...). يتم توليد ملفات XML جاهزة للنسخ إلى مشروع أندرويد مباشرة.</p>
+        </div>
+
+        <div class="row" style="margin-top:16px;">
+          <div style="flex:1; min-width:150px;">
+            <label>صيغة الملفات:</label>
+            <select id="format">
+              <option value="png" selected>PNG (شفافية)</option>
+              <option value="jpeg">JPEG</option>
+              <option value="webp">WEBP</option>
+            </select>
+          </div>
+          <div style="width:110px;">
+            <label>خلفية JPEG:</label>
+            <input type="color" id="bgColor" value="#ffffff">
+          </div>
+        </div>
+
+        <label>تدوير الزوايا: <span id="radiusVal">0%</span></label>
+        <input type="range" id="cornerRadius" min="0" max="50" value="0">
+
+        <label>حشوة داخلية (تصغير المحتوى): <span id="padVal">0%</span></label>
+        <input type="range" id="padding" min="0" max="40" value="0">
+
+        <div class="actions">
+          <button class="btn btn-primary" id="generateBtn">⚡ توليد جميع المقاسات</button>
+          <button class="btn btn-ghost" id="zipBtn" disabled>📦 تحميل ZIP</button>
+          <button class="btn btn-ghost" id="resetBtn">🔄 صورة جديدة</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 📄 محرر manifest.json -->
+  <div class="panel" id="manifestPanel">
+    <h2>📄 إعدادات تطبيق الويب (manifest.json)</h2>
+    <div class="m-grid">
+      <div><label>اسم التطبيق *</label><input type="text" id="mName" value="تطبيقي" placeholder="الاسم الكامل"></div>
+      <div><label>الاسم المختصر</label><input type="text" id="mShort" value="تطبيقي" placeholder="يظهر تحت الأيقونة"></div>
+      <div><label>وصف التطبيق</label><input type="text" id="mDesc" placeholder="وصف مختصر للتطبيق"></div>
+      <div><label>رابط البداية (start_url)</label><input type="text" id="mStartUrl" value="."></div>
+      <div><label>اللون الرئيسي (theme)</label><input type="color" id="mTheme" value="#6c5ce7"></div>
+      <div><label>لون الخلفية</label><input type="color" id="mBgColor" value="#0f1220"></div>
+      <div>
+        <label>وضع العرض (display)</label>
+        <select id="mDisplay">
+          <option value="standalone" selected>تطبيق مستقل (standalone)</option>
+          <option value="fullscreen">ملء الشاشة (fullscreen)</option>
+          <option value="minimal-ui">شريط بسيط (minimal-ui)</option>
+          <option value="browser">متصفح (browser)</option>
+        </select>
+      </div>
+      <div>
+        <label>اتجاه الشاشة</label>
+        <select id="mOrientation">
+          <option value="any" selected>حر (any)</option>
+          <option value="portrait">عمودي (portrait)</option>
+          <option value="landscape">أفقي (landscape)</option>
+        </select>
+      </div>
+    </div>
+    <label class="check-line">
+      <input type="checkbox" id="includeManifest" checked>
+      تضمين ملف manifest.json داخل ملف ZIP (مجلد pwa)
+    </label>
+    <pre id="manifestPreview" dir="ltr"></pre>
+  </div>
+
+  <!-- النتائج -->
+  <div class="results" id="results">
+    <h2>✅ الأيقونات المولّدة (<span id="count">0</span>)</h2>
+    <div class="icons-grid" id="iconsGrid"></div>
+  </div>
+
+  <footer>صُنع بـ ❤️ — جميع المعالجات تتم على جهازك دون رفع الصور لأي خادم</footer>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+/* ==================== المقاسات ==================== */
+const ICON_SPECS = {
+  android: [
+    { size: 48,  path: "android/res/mipmap-mdpi/ic_launcher.png",    usage: "Android mdpi" },
+    { size: 72,  path: "android/res/mipmap-hdpi/ic_launcher.png",    usage: "Android hdpi" },
+    { size: 96,  path: "android/res/mipmap-xhdpi/ic_launcher.png",   usage: "Android xhdpi" },
+    { size: 144, path: "android/res/mipmap-xxhdpi/ic_launcher.png",  usage: "Android xxhdpi" },
+    { size: 192, path: "android/res/mipmap-xxxhdpi/ic_launcher.png", usage: "Android xxxhdpi" },
+    { size: 512, path: "android/playstore-icon.png",                 usage: "متجر Google Play" },
+  ],
+  ios: [
+    { size: 120, path: "ios/icon-60@2x.png",   usage: "iPhone @2x (60pt)" },
+    { size: 180, path: "ios/icon-60@3x.png",   usage: "iPhone @3x (60pt)" },
+    { size: 152, path: "ios/icon-76@2x.png",   usage: "iPad @2x (76pt)" },
+    { size: 167, path: "ios/icon-83.5@2x.png", usage: "iPad Pro (83.5pt)" },
+    { size: 76,  path: "ios/icon-76.png",      usage: "iPad @1x (76pt)" },
+    { size: 1024,path: "ios/icon-1024.png",    usage: "App Store (1024pt)" },
+  ],
+  web: [
+    { size: 16,  path: "web/favicon-16x16.png",      usage: "تبويب المتصفح" },
+    { size: 32,  path: "web/favicon-32x32.png",      usage: "Favicon قياسي" },
+    { size: 48,  path: "web/favicon-48x48.png",      usage: "بداية Windows" },
+    { size: 180, path: "web/apple-touch-icon.png",   usage: "الشاشة الرئيسية Safari" },
+  ],
+  pwa: [
+    { size: 192, path: "pwa/pwa-icon-192.png", usage: "PWA manifest 192" },
+    { size: 512, path: "pwa/pwa-icon-512.png", usage: "PWA manifest 512" },
+  ],
+};
+
+// كثافات الأيقونات التكيفية (108dp لكل كثافة)
+const ADAPTIVE_DENSITIES = [
+  { size: 108, d: "mdpi" }, { size: 162, d: "hdpi" }, { size: 216, d: "xhdpi" },
+  { size: 324, d: "xxhdpi" }, { size: 432, d: "xxxhdpi" },
+];
+
+/* ==================== الحالة ==================== */
+let rawImg = null, sourceImg = null;
+let generated = [];
+const $ = id => document.getElementById(id);
+
+/* ==================== رفع الصورة ==================== */
+const dropZone = $("dropZone"), fileInput = $("fileInput");
+dropZone.addEventListener("click", () => fileInput.click());
+fileInput.addEventListener("change", e => e.target.files[0] && loadImage(e.target.files[0]));
+["dragover","dragenter"].forEach(ev => dropZone.addEventListener(ev, e => { e.preventDefault(); dropZone.classList.add("drag"); }));
+["dragleave","drop"].forEach(ev => dropZone.addEventListener(ev, e => { e.preventDefault(); dropZone.classList.remove("drag"); }));
+dropZone.addEventListener("drop", e => {
+  const f = e.dataTransfer.files[0];
+  if (f && f.type.startsWith("image/")) loadImage(f);
+});
+window.addEventListener("paste", e => {
+  const item = [...e.clipboardData.items].find(i => i.type.startsWith("image/"));
+  if (item) loadImage(item.getAsFile());
+});
+
+function loadImage(file) {
+  const reader = new FileReader();
+  reader.onload = e => {
+    const img = new Image();
+    img.onload = () => {
+      initCrop(img);
+      ["cropPanel","panel","manifestPanel"].forEach(id => $(id).classList.add("show"));
+      drawPreview();
+      toast("تم تحميل الصورة بنجاح ✅");
+      $("cropPanel").scrollIntoView({ behavior: "smooth" });
+    };
+    img.src = e.target.result;
+  };
+  reader.readAsDataURL(file);
+}
+
+/* ==================== القص التفاعلي ==================== */
+const cropCanvas = $("cropCanvas"), cropCtx = cropCanvas.getContext("2d");
+let cropSize = 340, dpr = 1;
+const crop = { scale: 1, min: 1, ox: 0, oy: 0 };
+const pointers = new Map();
+
+function initCrop(img) {
+  rawImg = img; sourceImg = img;
+  cropSize = Math.min(340, Math.max(240, window.innerWidth - 90));
+  dpr = window.devicePixelRatio || 1;
+  cropCanvas.width = cropCanvas.height = Math.round(cropSize * dpr);
+  cropCanvas.style.width = cropCanvas.style.height = cropSize + "px";
+  crop.min = Math.max(cropSize / img.width, cropSize / img.height);
+  crop.scale = crop.min;
+  crop.ox = (cropSize - img.width * crop.scale) / 2;
+  crop.oy = (cropSize - img.height * crop.scale) / 2;
+  $("zoomRange").value = 100; $("zoomVal").textContent = "100%";
+  drawCrop();
+}
+
+function clampCrop() {
+  crop.scale = Math.min(Math.max(crop.scale, crop.min), crop.min * 5);
+  const dw = rawImg.width * crop.scale, dh = rawImg.height * crop.scale;
+  crop.ox = Math.min(0, Math.max(cropSize - dw, crop.ox));
+  crop.oy = Math.min(0, Math.max(cropSize - dh, crop.oy));
+}
+
+function drawCrop() {
+  cropCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  cropCtx.fillStyle = "#151a30";
+  cropCtx.fillRect(0, 0, cropSize, cropSize);
+  const dw = rawImg.width * crop.scale, dh = rawImg.height * crop.scale;
+  cropCtx.drawImage(rawImg, crop.ox, crop.oy, dw, dh);
+  // شبكة الثلوث
+  cropCtx.strokeStyle = "rgba(255,255,255,.12)"; cropCtx.lineWidth = 1;
+  [1/3, 2/3].forEach(t => {
+    cropCtx.beginPath(); cropCtx.moveTo(cropSize*t, 0); cropCtx.lineTo(cropSize*t, cropSize); cropCtx.stroke();
+    cropCtx.beginPath(); cropCtx.moveTo(0, cropSize*t); cropCtx.lineTo(cropSize, cropSize*t); cropCtx.stroke();
+  });
+  // دائرة معاينة شكل الأيقونة
+  cropCtx.beginPath();
+  cropCtx.arc(cropSize/2, cropSize/2, cropSize/2 - 2, 0, Math.PI * 2);
+  cropCtx.strokeStyle = "rgba(0,206,201,.45)"; cropCtx.lineWidth = 2; cropCtx.stroke();
+}
+
+function toLocal(e) {
+  const r = cropCanvas.getBoundingClientRect();
+  return { x: (e.clientX - r.left) * (cropSize / r.width), y: (e.clientY - r.top) * (cropSize / r.height) };
+}
+function zoomAt(factor, cx, cy) {
+  const old = crop.scale;
+  crop.scale = Math.min(Math.max(old * factor, crop.min), crop.min * 5);
+  const k = crop.scale / old;
+  crop.ox = cx - (cx - crop.ox) * k;
+  crop.oy = cy - (cy - crop.oy) * k;
+}
+function syncZoom() {
+  const pct = Math.min(400, Math.round(crop.scale / crop.min * 100));
+  $("zoomRange").value = pct; $("zoomVal").textContent = pct + "%";
+}
+
+cropCanvas.addEventListener("pointerdown", e => {
+  e.preventDefault(); cropCanvas.setPointerCapture(e.pointerId);
+  pointers.set(e.pointerId, toLocal(e));
+});
+cropCanvas.addEventListener("pointermove", e => {
+  if (!pointers.has(e.pointerId)) return;
+  const prev = pointers.get(e.pointerId), cur = toLocal(e);
+  if (pointers.size === 1) {
+    crop.ox += cur.x - prev.x; crop.oy += cur.y - prev.y;
+  } else if (pointers.size === 2) {
+    const otherId = [...pointers.keys()].find(id => id !== e.pointerId);
+    const other = pointers.get(otherId);
+    const d0 = Math.hypot(prev.x - other.x, prev.y - other.y);
+    const d1 = Math.hypot(cur.x - other.x, cur.y - other.y);
+    if (d0 > 0) zoomAt(d1 / d0, (cur.x + other.x) / 2, (cur.y + other.y) / 2);
+  }
+  pointers.set(e.pointerId, cur);
+  clampCrop(); drawCrop(); syncZoom();
+});
+["pointerup","pointercancel"].forEach(ev => cropCanvas.addEventListener(ev, e => pointers.delete(e.pointerId)));
+cropCanvas.addEventListener("wheel", e => {
+  e.preventDefault();
+  const p = toLocal(e);
+  zoomAt(e.deltaY < 0 ? 1.08 : 0.925, p.x, p.y);
+  clampCrop(); drawCrop(); syncZoom();
+}, { passive: false });
+
+$("zoomRange").addEventListener("input", e => {
+  const target = crop.min * (+e.target.value / 100);
+  zoomAt(target / crop.scale, cropSize / 2, cropSize / 2);
+  clampCrop(); drawCrop(); syncZoom();
+});
+
+$("applyCropBtn").addEventListener("click", () => {
+  const srcX = -crop.ox / crop.scale, srcY = -crop.oy / crop.scale;
+  const srcSize = cropSize / crop.scale;
+  const out = document.createElement("canvas");
+  out.width = out.height = Math.max(2, Math.round(srcSize));
+  out.getContext("2d").drawImage(rawImg, srcX, srcY, srcSize, srcSize, 0, 0, out.width, out.height);
+  sourceImg = out;
+  drawPreview();
+  toast("تم تطبيق القص ✂️");
+});
+$("resetCropBtn").addEventListener("click", () => { initCrop(rawImg); drawPreview(); toast("تمت إعادة التعيين ↩️"); });
+
+/* ==================== المعاينة والخيارات ==================== */
+$("cornerRadius").addEventListener("input", e => { $("radiusVal").textContent = e.target.value + "%"; drawPreview(); });
+$("padding").addEventListener("input", e => { $("padVal").textContent = e.target.value + "%"; drawPreview(); });
+$("format").addEventListener("change", () => { drawPreview(); updateManifestPreview(); });
+$("bgColor").addEventListener("input", drawPreview);
+
+document.querySelectorAll(".chip").forEach(chip => chip.addEventListener("click", () => {
+  chip.classList.toggle("active");
+  $("adaptiveOpts").hidden = !$("adaptiveChip").classList.contains("active");
+}));
+$("adaptiveBgType").addEventListener("change", () => $("adaptiveBg").hidden = $("adaptiveBgType").value !== "color");
+
+function drawPreview() {
+  if (!sourceImg) return;
+  const c = $("previewCanvas");
+  renderIcon(c.getContext("2d"), sourceImg, c.width, c.height);
+}
+
+/* رسم أيقونة قياسية */
+function renderIcon(ctx, img, w, h) {
+  const r = (+$("cornerRadius").value / 100) * w;
+  const pad = +$("padding").value / 100;
+  ctx.clearRect(0, 0, w, h);
+  if ($("format").value === "jpeg") { ctx.fillStyle = $("bgColor").value; ctx.fillRect(0, 0, w, h); }
+  if (r > 0) { ctx.save(); roundRectPath(ctx, 0, 0, w, h, r); ctx.clip(); }
+  const side = Math.min(img.width, img.height);
+  const inner = side * (1 - pad * 2), off = (side - inner) / 2;
+  ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = "high";
+  ctx.drawImage(img, (img.width - side)/2 + off, (img.height - side)/2 + off, inner, inner, 0, 0, w, h);
+  if (r > 0) ctx.restore();
+}
+function roundRectPath(ctx, x, y, w, h, r) {
+  r = Math.min(r, w/2, h/2);
+  ctx.beginPath();
+  ctx.moveTo(x+r, y);
+  ctx.arcTo(x+w, y, x+w, y+h, r); ctx.arcTo(x+w, y+h, x, y+h, r);
+  ctx.arcTo(x, y+h, x, y, r);     ctx.arcTo(x, y, x+w, y, r);
+  ctx.closePath();
+}
+function drawCover(ctx, img, size) {
+  const s = Math.max(size / img.width, size / img.height);
+  ctx.drawImage(img, (size - img.width*s)/2, (size - img.height*s)/2, img.width*s, img.height*s);
+}
+
+/* رسم طبقات الأيقونة التكيفية */
+function renderAdaptiveLayer(ctx, size, layer) {
+  if (layer === "background") {
+    if ($("adaptiveBgType").value === "image") drawCover(ctx, sourceImg, size);
+    else { ctx.fillStyle = $("adaptiveBg").value; ctx.fillRect(0, 0, size, size); }
+    return;
+  }
+  // الواجهة الأمامية: المحتوى داخل المنطقة الآمنة (66 من 108)
+  const safe = size * (66 / 108), pad = (size - safe) / 2;
+  const side = Math.min(sourceImg.width, sourceImg.height);
+  ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = "high";
+  ctx.drawImage(sourceImg, (sourceImg.width - side)/2, (sourceImg.height - side)/2, side, side, pad, pad, safe, safe);
+  if (layer === "monochrome") { // Android 13+
+    const d = ctx.getImageData(0, 0, size, size);
+    for (let i = 0; i < d.data.length; i += 4) {
+      const l = d.data[i]*.299 + d.data[i+1]*.587 + d.data[i+2]*.114;
+      d.data[i] = d.data[i+1] = d.data[i+2] = l;
+    }
+    ctx.putImageData(d, 0, 0);
+  }
+}
+
+/* ==================== manifest.json ==================== */
+function buildManifest() {
+  const fmt = "image/" + $("format").value;
+  const m = {
+    name: $("mName").value.trim() || "My App",
+    short_name: $("mShort").value.trim() || ($("mName").value.trim() || "App"),
+    start_url: $("mStartUrl").value.trim() || ".",
+    scope: ".",
+    display: $("mDisplay").value,
+    orientation: $("mOrientation").value,
+    lang: "ar",
+    dir: "rtl",
+    theme_color: $("mTheme").value,
+    background_color: $("mBgColor").value,
+    icons: [
+      { src: "pwa-icon-192.png", sizes: "192x192", type: fmt, purpose: "any" },
+      { src: "pwa-icon-512.png", sizes: "512x512", type: fmt, purpose: "any" },
+    ],
+  };
+  if ($("mDesc").value.trim()) m.description = $("mDesc").value.trim();
+  return m;
+}
+function updateManifestPreview() {
+  $("manifestPreview").textContent = JSON.stringify(buildManifest(), null, 2);
+}
+document.querySelectorAll("#manifestPanel input, #manifestPanel select").forEach(el =>
+  el.addEventListener("input", updateManifestPreview));
+updateManifestPreview();
+
+/* ==================== التوليد ==================== */
+const toBlob = (canvas, mime) => new Promise(res => canvas.toBlob(res, mime, 0.92));
+const replaceExt = (p, ext) => p.replace(/\.(png|jpeg|webp)$/, "." + ext);
+const basename = p => p.split("/").pop();
+
+$("generateBtn").addEventListener("click", async () => {
+  const platforms = [...document.querySelectorAll(".chip.active")].map(c => c.dataset.p);
+  if (!sourceImg) return toast("اختر صورة أولاً!");
+  if (!platforms.length) return toast("اختر منصة واحدة على الأقل!");
+
+  generated.forEach(g => URL.revokeObjectURL(g.url));
+  generated = [];
+  const format = $("format").value, mime = "image/" + format;
+  $("generateBtn").disabled = true; $("generateBtn").textContent = "⏳ جارٍ التوليد...";
+
+  // الأيقونات القياسية
+  for (const p of platforms) {
+    if (!ICON_SPECS[p]) continue;
+    for (const spec of ICON_SPECS[p]) {
+      const canvas = document.createElement("canvas");
+      canvas.width = canvas.height = spec.size;
+      renderIcon(canvas.getContext("2d"), sourceImg, spec.size, spec.size);
+      const blob = await toBlob(canvas, mime);
+      const path = replaceExt(spec.path, format);
+      generated.push({ platform: p, path, size: spec.size, usage: spec.usage, blob, url: URL.createObjectURL(blob) });
+    }
+  }
+
+  // الأيقونات التكيفية
+  if (platforms.includes("adaptive")) {
+    const layers = [
+      { key: "foreground", label: "طبقة أمامية (Foreground)" },
+      { key: "background", label: "طبقة خلفية (Background)" },
+      { key: "monochrome", label: "أحادية اللون (Android 13+)" },
+    ];
+    for (const d of ADAPTIVE_DENSITIES) {
+      for (const L of layers) {
+        if (L.key === "background" && $("adaptiveBgType").value === "color") continue; // الخلفية اللونية تُولَّد عبر XML
+        const canvas = document.createElement("canvas");
+        canvas.width = canvas.height = d.size;
+        renderAdaptiveLayer(canvas.getContext("2d"), d.size, L.key);
+        const blob = await toBlob(canvas, mime);
+        const path = `android/res/mipmap-${d.d}/ic_launcher_${L.key}.${format}`;
+        generated.push({ platform: "adaptive", path, size: d.size, usage: `${L.label} — ${d.d}`, blob, url: URL.createObjectURL(blob) });
+      }
+    }
+  }
+
+  renderResults();
+  $("zipBtn").disabled = false;
+  $("generateBtn").disabled = false; $("generateBtn").textContent = "⚡ توليد جميع المقاسات";
+  toast(`تم توليد ${generated.length} أيقونة 🎉`);
+});
+
+function renderResults() {
+  const grid = $("iconsGrid");
+  grid.innerHTML = "";
+  $("count").textContent = generated.length;
+  generated.forEach(g => {
+    const card = document.createElement("div");
+    card.className = "icon-card";
+    const disp = Math.min(72, Math.max(36, Math.round(g.size / 6)));
+    card.innerHTML = `
+      <img src="${g.url}" width="${disp}" height="${disp}" alt="${g.path}">
+      <div class="size">${g.size}×${g.size}</div>
+      <div class="usage">${g.usage}</div>
+      <button class="dl">⬇ تحميل</button>`;
+    card.querySelector(".dl").onclick = () => downloadBlob(g.blob, basename(g.path));
+    grid.appendChild(card);
+  });
+  $("results").classList.add("show");
+}
+
+/* ==================== التحميل و ZIP ==================== */
+function downloadBlob(blob, name) {
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = name;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+}
+
+$("zipBtn").addEventListener("click", async () => {
+  const zip = new JSZip();
+  generated.forEach(g => zip.file(g.path, g.blob));
+
+  // ملفات XML للأيقونات التكيفية
+  if ($("adaptiveChip").classList.contains("active")) {
+    const bgIsColor = $("adaptiveBgType").value === "color";
+    const xml = `<?xml version="1.0" encoding="utf-8"?>
+<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
+    <background android:drawable="${bgIsColor ? "@color/ic_launcher_background" : "@mipmap/ic_launcher_background"}"/>
+    <foreground android:drawable="@mipmap/ic_launcher_foreground"/>
+    <monochrome android:drawable="@mipmap/ic_launcher_monochrome"/>
+</adaptive-icon>`;
+    zip.file("android/res/mipmap-anydpi-v26/ic_launcher.xml", xml);
+    zip.file("android/res/mipmap-anydpi-v26/ic_launcher_round.xml", xml);
+    if (bgIsColor) {
+      zip.file("android/res/values/ic_launcher_background.xml",
+`<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="ic_launcher_background">${$("adaptiveBg").value.toUpperCase()}</color>
+</resources>`);
+    }
+  }
+
+  // ملف manifest.json
+  if ($("includeManifest").checked) {
+    zip.file("pwa/manifest.json", JSON.stringify(buildManifest(), null, 2));
+  }
+
+  zip.file("README.txt",
+`حزمة أيقونات التطبيقات — تم توليدها محلياً في متصفحك 🔒
+=============================================
+هيكل المجلدات:
+• android/res/mipmap-*        → أيقونات أندرويد القياسية
+• android/res/mipmap-anydpi-v26 → ملفات XML للأيقونات التكيفية (Android 8+)
+• android/playstore-icon.png  → أيقونة متجر Google Play (512)
+• ios/                        → جميع أيقونات iPhone و iPad و App Store
+• web/                        → أيقونات المتصفح (Favicon)
+• pwa/manifest.json           → إعدادات تطبيق الويب التقدمي
+=============================================
+طريقة الاستخدام في مشروع أندرويد:
+انسخ محتويات مجلد android/res إلى app/src/main/res في مشروعك.`);
+
+  const blob = await zip.generateAsync({ type: "blob" });
+  downloadBlob(blob, "app-icons.zip");
+  toast("تم تحميل ملف ZIP 📦");
+});
+
+$("resetBtn").addEventListener("click", () => location.reload());
+
+/* ==================== تنبيهات ==================== */
+let toastTimer;
+function toast(msg) {
+  const t = $("toast");
+  t.textContent = msg;
+  t.classList.add("show");
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.classList.remove("show"), 2500);
+}
+</script>
+<script>
+/* ==================== PWA: عامل الخدمة + التثبيت ==================== */
+
+// تسجيل عامل الخدمة (يعمل فقط عبر HTTPS أو localhost)
+if ("serviceWorker" in navigator) {
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("sw.js")
+      .then(reg => console.log("✅ Service Worker جاهز:", reg.scope))
+      .catch(err => console.warn("⚠️ فشل تسجيل SW:", err));
+  });
+}
+
+// زر التثبيت المخصص (يظهر عندما يسمح المتصفح بالتثبيت)
+let deferredPrompt = null;
+const installBtn = document.getElementById("installBtn");
+
+window.addEventListener("beforeinstallprompt", e => {
+  e.preventDefault();              // نخفي شريط المتصفح الافتراضي
+  deferredPrompt = e;              // نخزّن الحدث لإطلاقه يدوياً
+  installBtn.hidden = false;       // نُظهر زرنا المخصص
+});
+
+installBtn.addEventListener("click", async () => {
+  if (!deferredPrompt) return;
+  deferredPrompt.prompt();         // عرض نافذة التثبيت
+  const { outcome } = await deferredPrompt.userChoice;
+  if (outcome === "accepted") toast("شكراً لتثبيت التطبيق 🎉");
+  deferredPrompt = null;
+  installBtn.hidden = true;
+});
+
+window.addEventListener("appinstalled", () => {
+  installBtn.hidden = true;
+  toast("تم تثبيت التطبيق بنجاح ✅");
+});
+
+// تنبيه عند تغيّر حالة الاتصال
+window.addEventListener("offline", () => toast("📴 وضع عدم الاتصال — التطبيق يعمل محلياً بشكل كامل"));
+window.addEventListener("online",  () => toast("🌐 عاد الاتصال بالإنترنت"));
+</script>
+</body>
+</html>
